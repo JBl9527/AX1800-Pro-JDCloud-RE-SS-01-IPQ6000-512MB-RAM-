@@ -1,0 +1,16 @@
+# 编译生成产物 (仅忽略根目录)
+/bin/
+/build_dir/
+/staging_dir/
+/toolchain/
+/logs/
+*.orig
+*.rej
+*~
+*.swp
+
+# 临时目录与输出
+/firmware_output/
+/dl/
+/openwrt/
+/scratch/

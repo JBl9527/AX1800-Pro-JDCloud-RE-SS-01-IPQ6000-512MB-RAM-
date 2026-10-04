@@ -1,0 +1,201 @@
+﻿name: Build AX1800 Pro OpenWrt
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        description: 'OpenWrt 源码仓库地址'
+        required: true
+        default: 'https://github.com/LiBwrt-op/openwrt-6.x'
+        type: choice
+        options:
+          - 'https://github.com/LiBwrt-op/openwrt-6.x'
+          - 'https://github.com/breeze303/openwrt-6.x'
+          - 'https://github.com/openwrt/openwrt'
+          - 'https://github.com/immortalwrt/immortalwrt'
+      repo_branch:
+        description: '源码分支 (LiBwrt/breeze303推荐 25.12-nss)'
+        required: true
+        default: '25.12-nss'
+      rootfs_size:
+        description: 'Rootfs 分区大小 (MB, 推荐 512 适配 U-Boot 大分区)'
+        required: true
+        default: '512'
+      upload_release:
+        description: '是否发布到 GitHub Releases'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  CONFIG_FILE: configs/jdc_ax1800pro.config
+  DIY_P1_SH: scripts/diy-part1.sh
+  DIY_P2_SH: scripts/diy-part2.sh
+  FILES_DIR: files
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    name: 编译 AX1800 Pro 固件
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 检出当前工作流代码
+        uses: actions/checkout@v4
+
+      - name: 释放 Runner 磁盘空间
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      - name: 初始化编译环境
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext \
+            gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 \
+            libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch \
+            pkgconf python3 python3-pyelftools python3-setuptools qemu-utils rsync scons \
+            squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto \
+            xxd zlib1g-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+
+      - name: 克隆 OpenWrt 源码
+        run: |
+          REPO_URL="${{ inputs.repo_url }}"
+          REPO_BRANCH="${{ inputs.repo_branch }}"
+          echo "Cloning $REPO_URL ($REPO_BRANCH)..."
+          git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" openwrt
+          cd openwrt
+          echo "OPENWRT_ROOT=$PWD" >> $GITHUB_ENV
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
+
+      - name: 执行 DIY-Part1 自定义脚本 (添加源)
+        run: |
+          chmod +x ${{ env.DIY_P1_SH }}
+          cd ${{ env.OPENWRT_ROOT }}
+          $GITHUB_WORKSPACE/${{ env.DIY_P1_SH }}
+
+      - name: 更新并安装 Feeds
+        run: |
+          cd ${{ env.OPENWRT_ROOT }}
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: 注入自定义配置文件与文件目录
+        run: |
+          # 拷贝自定义 files 目录到源码
+          if [ -d "${{ env.FILES_DIR }}" ]; then
+            cp -r "${{ env.FILES_DIR }}" "${{ env.OPENWRT_ROOT }}/files"
+            chmod -R +x "${{ env.OPENWRT_ROOT }}/files/etc/uci-defaults" 2>/dev/null || true
+          fi
+
+          # 拷贝基础 .config
+          cp "${{ env.CONFIG_FILE }}" "${{ env.OPENWRT_ROOT }}/.config"
+
+      - name: 执行 DIY-Part2 自定义脚本 (硬件适配与内存调优)
+        env:
+          ROOTFS_SIZE: ${{ inputs.rootfs_size }}
+        run: |
+          chmod +x ${{ env.DIY_P2_SH }}
+          cd ${{ env.OPENWRT_ROOT }}
+          $GITHUB_WORKSPACE/${{ env.DIY_P2_SH }}
+
+      - name: 生成最终 .config 配置
+        run: |
+          cd ${{ env.OPENWRT_ROOT }}
+          make defconfig
+          echo "=================== 目标配置校验 ==================="
+          grep -E "CONFIG_TARGET_qualcommax|CONFIG_TARGET_.*DEVICE.*jdcloud|CONFIG_PACKAGE_luci-theme-argon|CONFIG_PACKAGE_zram-swap" .config || true
+          echo "==================================================="
+
+      - name: 预下载软件包 (make download)
+        run: |
+          cd ${{ env.OPENWRT_ROOT }}
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: 编译固件
+        id: compile
+        run: |
+          cd ${{ env.OPENWRT_ROOT }}
+          echo "使用 $(nproc) 线程并行编译..."
+          make -j$(nproc) || make -j1 V=s
+          echo "compile_status=success" >> $GITHUB_OUTPUT
+
+      - name: 整理打包固件文件
+        id: organize
+        run: |
+          cd ${{ env.OPENWRT_ROOT }}/bin/targets/*/*
+          rm -rf packages
+          
+          # 创建输出目录
+          FIRMWARE_DIR="$GITHUB_WORKSPACE/firmware_output"
+          mkdir -p "$FIRMWARE_DIR"
+
+          # 复制主要固件
+          find . -maxdepth 1 -type f \( -name "*factory.bin" -o -name "*sysupgrade.bin" -o -name "*initramfs*.bin" -o -name "*.manifest" \) -exec cp {} "$FIRMWARE_DIR/" \;
+
+          # 如果存在 config.buildinfo 也一同复制
+          cp config.buildinfo "$FIRMWARE_DIR/config.txt" 2>/dev/null || true
+
+          cd "$FIRMWARE_DIR"
+          ls -lh
+          
+          # 生成哈希校验清单
+          sha256sum * > sha256sums.txt
+          md5sum * > md5sums.txt
+          
+          echo "FIRMWARE_PATH=$FIRMWARE_DIR" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 上传构建产物 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt-AX1800Pro-${{ env.BUILD_DATE }}
+          path: ${{ env.FIRMWARE_PATH }}
+          retention-days: 14
+
+      - name: 发布至 GitHub Releases
+        if: inputs.upload_release == true && steps.organize.outputs.status == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: AX1800Pro-${{ env.BUILD_DATE }}
+          name: 京东云亚瑟 AX1800 Pro 纯净轻量固件 (${{ env.BUILD_DATE }})
+          body: |
+            ## 🌟 京东云亚瑟 AX1800 Pro (JDC AX1800-Pro) 纯净原版固件
+
+            - **构建时间**: ${{ env.BUILD_DATE }}
+            - **源码版本**: ${{ inputs.repo_url }} (commit: `${{ env.COMMIT_HASH }}`)
+            - **架构平台**: Qualcomm IPQ60xx (Cortex-A53 @ 1.8GHz)
+            - **默认后台**: `192.168.1.1`
+            - **默认账号**: `root`
+            - **默认密码**: `password` (或无密码，直接回车)
+            - **预装主题**: `Argon` (带 argon-config 配置插件)
+            - **优化特性**:
+              - 🚀 **U-Boot 大分区兼容**：专为大分区优化，开箱可刷，配合 eMMC 挂载享受海量存储。
+              - 🍃 **极低内存占用**：开机空闲 RAM 仅占约 50~60MB，专为 512MB 内存设计，预留 440MB+ 充足运存供后续自主安装插件。
+              - ⚡ **无冗余插件**：剔除所有预装第三方插件，纯净原汁原味。
+              - 💾 **zram 压缩交换与低内存参数**：防止偶发性高负荷 OOM 崩溃。
+
+            ### 刷机指引：
+            1. **初次刷入 (推荐 U-Boot)**: 路由器断电，按住背部 Reset 键通电，待蓝灯常亮后电脑网线连 LAN 口，访问 `192.168.1.1`，上传以 `-factory.bin` 结尾的镜像刷入。
+            2. **同系统升级**: 在 OpenWrt 网页后台“系统 -> 备份/升级”选择 `-sysupgrade.bin` 固件刷入。
+          files: ${{ env.FIRMWARE_PATH }}/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

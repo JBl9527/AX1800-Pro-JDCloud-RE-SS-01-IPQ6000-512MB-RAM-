@@ -1,0 +1,40 @@
+﻿#!/bin/sh
+# =================================================================
+# 首次开机自运行初始化脚本 (uci-defaults 机制，执行完成后自动销毁)
+# =================================================================
+
+# 1. 语言与主题首选项
+uci set luci.main.lang='zh_cn'
+uci set luci.main.mediaurlbase='/luci-static/argon'
+uci commit luci
+
+# 2. 系统日志与时区精简配置 (降低 logd 内存占用)
+uci set system.@system[0].hostname='OpenWrt-AX1800Pro'
+uci set system.@system[0].zonename='Asia/Shanghai'
+uci set system.@system[0].timezone='CST-8'
+uci set system.@system[0].log_size='64'
+uci set system.@system[0].log_buffer_size='64'
+uci commit system
+
+# 3. 内存优化：配置 zram-swap 压缩交换空间 (256MB，lz4 算法)
+if [ -f "/etc/config/zram" ]; then
+    uci set zram.@zram[0].enabled='1'
+    uci set zram.@zram[0].size='256'
+    uci set zram.@zram[0].comp_algorithm='lz4'
+    uci commit zram
+    /etc/init.d/zram restart 2>/dev/null || true
+fi
+
+# 4. dnsmasq 缓存适度优化 (既保证快速解析，又杜绝大量域名缓存膨胀)
+uci set dhcp.@dnsmasq[0].cachesize='2000'
+uci commit dhcp
+
+# 5. WiFi 默认参数配置（若首启未生成则配置基本参数）
+if [ -f "/etc/config/wireless" ]; then
+    # 启用无线射频
+    uci set wireless.radio0.disabled='0'
+    uci set wireless.radio1.disabled='0'
+    uci commit wireless
+fi
+
+exit 0
