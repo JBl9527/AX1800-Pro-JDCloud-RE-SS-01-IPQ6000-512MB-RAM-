@@ -29,11 +29,11 @@ fi
 uci set dhcp.@dnsmasq[0].cachesize='2000'
 uci commit dhcp
 
-# 5. WiFi 默认参数配置（若首启未生成则配置基本参数）
+# 5. WiFi 默认保持关闭（安全考虑：未设密码前不广播开放热点；
+#    需要时在 LuCI「网络 -> 无线」里启用并设置 WPA2 密码）
 if [ -f "/etc/config/wireless" ]; then
-    # 启用无线射频
-    uci set wireless.radio0.disabled='0'
-    uci set wireless.radio1.disabled='0'
+    uci set wireless.radio0.disabled='1'
+    uci set wireless.radio1.disabled='1'
     uci commit wireless
 fi
 

@@ -29,6 +29,23 @@ fi
 
 echo "[信息] 目标数据大分区为: $TARGET_PART"
 
+# 安全校验：拒绝格式化系统分区，且分区需大于 1GB（防止误选小分区）
+if grep -q "^$TARGET_PART " /proc/mounts 2>/dev/null; then
+    _mp=$(grep "^$TARGET_PART " /proc/mounts 2>/dev/null | awk '{print $2}' | head -n1)
+    case "$_mp" in
+        /|/overlay|/rom)
+            echo "[错误] 目标分区已挂载为系统分区 ($_mp)，拒绝格式化！"
+            exit 1
+            ;;
+    esac
+fi
+_psz=$(lsblk -b -n -o SIZE "$TARGET_PART" 2>/dev/null | head -n1)
+if [ -n "$_psz" ] && [ "$_psz" -lt 1073741824 ]; then
+    echo "[错误] 目标分区仅 $((_psz/1048576))MB，小于 1GB，拒绝格式化（可能选错了分区）！"
+    exit 1
+fi
+unset _mp _psz
+
 read -p "是否格式化 $TARGET_PART 为 ext4 并挂载为数据盘存储？(y/N): " CONFIRM
 if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
     echo "[取消] 用户终止操作。"
@@ -43,9 +60,12 @@ mkfs.ext4 -F -L "eMMC_Storage" "$TARGET_PART"
 UUID=$(blkid -s UUID -o value "$TARGET_PART")
 echo "[2/3] 分区 UUID: $UUID"
 
-# 配置 fstab 自动挂载
+# 配置 fstab 自动挂载（按 target 精确删除旧的 /mnt/emmc 挂载项，避免误删用户其它挂载）
 echo "[3/3] 写入 /etc/config/fstab 自动挂载规则..."
-uci -q delete fstab.@mount[-1] || true
+while _m=$(uci show fstab 2>/dev/null | grep -m1 "\.target='/mnt/emmc'$" | sed "s/\.target='\/mnt\/emmc'$//"); [ -n "$_m" ]; do
+    uci -q delete "$_m" || break
+done
+unset _m
 uci add fstab mount
 uci set fstab.@mount[-1].uuid="$UUID"
 uci set fstab.@mount[-1].target="/mnt/emmc"

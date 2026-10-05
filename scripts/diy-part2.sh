@@ -9,7 +9,6 @@ echo ">>> [DIY-Part2] 开始执行硬件深度适配与内存调优..."
 ROOTFS_SIZE="${ROOTFS_SIZE:-512}"
 
 # 1. 默认网络与主机名设定 (默认网关 192.168.1.1)
-sed -i 's/192.168.1.1/192.168.1.1/g' package/base-files/files/bin/config_generate
 sed -i 's/OpenWrt/OpenWrt-AX1800Pro/g' package/base-files/files/bin/config_generate
 
 # 2. 默认时区修正为中国标准时间 (Asia/Shanghai)
@@ -30,20 +29,25 @@ echo "CONFIG_TARGET_ROOTFS_PARTSIZE=${ROOTFS_SIZE}" >> .config
 
 # 5. 512MB 内存保护与 DTS 节点核查
 echo ">>> 执行 512MB RAM 节点保护检测..."
-find target/linux/qualcommax -name "*jdcloud*.dts*" -o -name "*re-ss-01*.dts*" | while read -r dts_file; do
-    if [ -f "$dts_file" ]; then
+_dts_files=$(find target/linux/qualcommax \( -name "*jdcloud*.dts*" -o -name "*re-ss-01*.dts*" \) 2>/dev/null)
+if [ -z "$_dts_files" ]; then
+    echo "[警告] 未找到 jdcloud/re-ss-01 的 DTS 文件，512MB 内存节点保护未生效，请检查源码树！"
+else
+    for dts_file in $_dts_files; do
         echo "检查 DTS 文件: $dts_file"
         # 修正可能存在的 1024MB 误标 (0x40000000 误写为 1G 会导致 512M 版亚瑟开机死循环)
         sed -i 's/<0x0 0x40000000 0x0 0x40000000>/<0x0 0x40000000 0x0 0x20000000>/g' "$dts_file"
-    fi
-done
+    done
+fi
+unset _dts_files
 
 # 6. WiFi 默认配置优化 (AX1800 Pro 5G 功率与信道优化)
 # 修复部分源码中 5G 默认无功率设置或功率偏高导致的发热降速问题
 echo ">>> 预设 WiFi 优化参数 (5G 信道 149 / 功率 23dBm)..."
 sed -i 's/country=.*/country=CN/g' package/kernel/mac80211/files/lib/wifi/mac80211.sh 2>/dev/null || true
 
-# 7. 移除编译缓存警告与冗余检查
+# 7. 移除顶层 Makefile 的 -Werror（LiBwrt-op NSS 树部分软件包有警告会导致编译中断；
+#    注意：这会同时掩盖真正的编译错误，定位疑难编译失败时可临时注释掉本行再编）
 sed -i 's/-Werror//g' Makefile 2>/dev/null || true
 
 echo ">>> [DIY-Part2] 硬件适配与优化完成！"

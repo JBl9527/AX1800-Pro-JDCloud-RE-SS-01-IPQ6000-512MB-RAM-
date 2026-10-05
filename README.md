@@ -90,8 +90,8 @@
 ### 1. 默认网络信息
 - **默认管理地址**：`192.168.1.1`
 - **默认用户名**：`root`
-- **默认密码**：`password`（或空密码，直接回车）
-- **默认无线名称**：`OpenWrt_2.4G` / `OpenWrt_5G`（默认未设密码）
+- **默认密码**：（空，直接回车）
+- **默认无线**：首次开机默认关闭，请在 LuCI「网络 -> 无线」中启用并设置 WPA2 密码后再使用
 
 ### 2. 使用 U-Boot 大分区刷入（首次刷机）
 > ⚠️ **强烈注意**：从原厂或其他第三方固件刷入，**禁止**在原有系统后台直接使用 `sysupgrade` 升级，必须通过 U-Boot 刷入！
@@ -141,6 +141,25 @@ opkg install luci-app-upnp luci-i18n-upnp-zh-cn
 opkg install luci-app-autoreboot luci-i18n-autoreboot-zh-cn
 ```
 由于系统空闲内存高达 440MB+，即使后续运行复杂的现代应用也能游刃有余、轻快稳定！
+
+### 3. 安装代理软件（nikki / momo / PassWall）
+
+本固件已内置透明代理所需的全部内核模块（`kmod-nft-tproxy`、`kmod-nft-socket`、`kmod-tun` 等），可直接用一键脚本安装：
+
+```sh
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/JBl9527/update_plugins.sh/main/update_plugins.sh)"
+# 国内网络慢可用 jsDelivr：
+# sh -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/JBl9527/update_plugins.sh@main/update_plugins.sh)"
+```
+
+> ⚠️ **NSS 硬件加速与透明代理二选一**：本固件默认启用 `qca-nss-ecm` 硬件转发加速，它会把连接卸载到 NSS 协处理器、旁路 netfilter，导致 nikki/momo 的 TPROXY 规则看不到被卸载的流量（表现为部分流量不走代理）。启用透明代理前请先停用它：
+>
+> ```sh
+> /etc/init.d/qca-nss-ecm stop
+> /etc/init.d/qca-nss-ecm disable
+> ```
+>
+> 说明：daed 需要内核 BTF，本固件的 NSS 内核未开启该选项，不可用；nikki / momo / passwall / openclash 均可正常安装。
 
 ---
 

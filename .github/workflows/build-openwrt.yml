@@ -60,7 +60,7 @@ jobs:
           sudo -E apt-get -qq update
           sudo -E apt-get -qq install -y \
             ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext \
+            bzip2 cmake cpio curl device-tree-compiler fastjar flex gawk gettext \
             gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 \
             libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
             libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
@@ -185,7 +185,7 @@ jobs:
             - **架构平台**: Qualcomm IPQ60xx (Cortex-A53 @ 1.8GHz)
             - **默认后台**: `192.168.1.1`
             - **默认账号**: `root`
-            - **默认密码**: `password` (或无密码，直接回车)
+            - **默认密码**: 空（直接回车）
             - **预装主题**: `Argon` (带 argon-config 配置插件)
             - **优化特性**:
               - 🚀 **U-Boot 大分区兼容**：专为大分区优化，开箱可刷，配合 eMMC 挂载享受海量存储。
