@@ -1,6 +1,6 @@
 # 京东云亚瑟 AX1800 Pro 纯净原版 OpenWrt 固件云编译 (GitHub Actions)
 
-[![Build AX1800 Pro OpenWrt](https://github.com/your-username/your-repo/actions/workflows/build-openwrt.yml/badge.svg)](https://github.com/your-username/your-repo/actions/workflows/build-openwrt.yml)
+[![Build AX1800 Pro OpenWrt](https://github.com/JBl9527/AX1800-Pro-JDCloud-RE-SS-01-IPQ6000-512MB-RAM-/actions/workflows/build-openwrt.yml/badge.svg)](https://github.com/JBl9527/AX1800-Pro-JDCloud-RE-SS-01-IPQ6000-512MB-RAM-/actions/workflows/build-openwrt.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-Vanilla-blue.svg)](https://openwrt.org/)
 
