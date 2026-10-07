@@ -69,19 +69,20 @@
 ## 🚀 如何在 GitHub Actions 中一键编译
 
 1. **Fork 本仓库**：点击本页面右上角 `Fork`，复制到你个人的 GitHub 账号中。
-2. **开启 Actions 权限**：进入你 Fork 后的仓库，切换至 **Actions** 标签页，点击绿色按钮 `I understand my workflows, go ahead and enable them` 启用工作流。
-3. **启动编译**：
-   - 点击左侧的 **Build AX1800 Pro OpenWrt** 工作流；
-   - 点击右侧的 **Run workflow** 下拉按钮；
-   - 选择配置参数（支持默认值，无需修改即可直接开跑）：
-     - **源码仓库**：默认 `https://github.com/LiBwrt-op/openwrt-6.x`（含 NSS 满血硬件加速与大分区支持）
-     - **源码分支**：默认 `25.12-nss`
-     - **Rootfs 大小**：默认 `512`（MB）
-     - **发布到 Release**：勾选 `true`
-   - 点击绿色的 **Run workflow** 开始编译。
-4. **下载固件**：
-   - 编译时间通常在 **1.5 ~ 2.5 小时**（取决于 GitHub Actions 服务器分配配置）；
-   - 编译完成后，在仓库右侧的 **Releases** 即可直接下载固件文件。
+### 两种编译方式任选：
+
+#### ⚡ 方式一：Quick ImageBuilder (推荐！仅需 3 ~ 5 分钟)
+适合日常打包、快速出固件。基于官方预编译 ImageBuilder，完整保留全部优化配置：
+1. 打开 Actions 页面，点击左侧的 **[Quick ImageBuilder (3分钟极速打包)](https://github.com/JBl9527/AX1800-Pro-JDCloud-RE-SS-01-IPQ6000-512MB-RAM-/actions/workflows/quick-imagebuilder.yml)**；
+2. 点击右侧 **Run workflow** 下拉按钮；
+3. 参数默认已最优（型号 `jdcloud_re-ss-01`，Rootfs `512MB`），直接点击绿色按钮 **Run workflow**；
+4. **等待 3 分钟**即可在 Releases 下载固件！
+
+#### 🔨 方式二：Build AX1800 Pro OpenWrt (全源码深度编译，约 1 小时)
+适合深度定制 Linux 内核源码、打底层设备树补丁时使用：
+1. 点击左侧的 **[Build AX1800 Pro OpenWrt](https://github.com/JBl9527/AX1800-Pro-JDCloud-RE-SS-01-IPQ6000-512MB-RAM-/actions/workflows/build-openwrt.yml)**；
+2. 点击右侧 **Run workflow** 开始全量编译（约 1 小时）。
+
 
 ---
 

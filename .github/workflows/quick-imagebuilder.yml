@@ -1,0 +1,178 @@
+﻿name: Quick ImageBuilder (3分钟极速打包)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ib_url:
+        description: 'ImageBuilder 底包地址'
+        required: true
+        default: 'https://downloads.immortalwrt.org/snapshots/targets/qualcommax/ipq60xx/immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst'
+        type: choice
+        options:
+          - 'https://downloads.immortalwrt.org/snapshots/targets/qualcommax/ipq60xx/immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst'
+          - 'https://downloads.openwrt.org/snapshots/targets/qualcommax/ipq60xx/openwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst'
+      profile:
+        description: '设备 Profile (AX1800 Pro / 亚瑟标准型号为 jdcloud_re-ss-01)'
+        required: true
+        default: 'jdcloud_re-ss-01'
+      rootfs_size:
+        description: 'Rootfs 分区大小 (MB, 适配 U-Boot 大分区)'
+        required: true
+        default: '512'
+      upload_release:
+        description: '是否发布到 GitHub Releases'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  FILES_DIR: files
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    name: 极速打包 AX1800 Pro 固件
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: 检出当前工作流代码
+        uses: actions/checkout@v4
+
+      - name: 初始化基础打包环境
+        run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk git gettext libssl-dev xsltproc wget curl zstd file
+          sudo timedatectl set-timezone "$TZ"
+          echo "BUILD_DATE=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
+
+      - name: 下载并解压 ImageBuilder
+        run: |
+          echo "正在下载 ImageBuilder 底包..."
+          curl -fsSL "${{ inputs.ib_url }}" -o ib.tar.zst
+          mkdir -p ib && tar -I zstd -xf ib.tar.zst -C ib --strip-components=1
+          cd ib
+          echo "IB_DIR=$PWD" >> $GITHUB_ENV
+
+          # 确保 Argon 主题源在 repositories.conf 中可用
+          if ! grep -q "luci" repositories.conf 2>/dev/null; then
+            echo "src/gz custom_luci https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/luci" >> repositories.conf
+          fi
+
+          echo "=== 检查目标设备 Profile ==="
+          make info | grep -E "jdcloud|re-ss-01" || true
+
+      - name: 注入自定义 Files 目录 (512MB内存优化/eMMC挂载/自启初始化)
+        run: |
+          cd ${{ env.IB_DIR }}
+          if [ -d "$GITHUB_WORKSPACE/${{ env.FILES_DIR }}" ]; then
+            cp -r "$GITHUB_WORKSPACE/${{ env.FILES_DIR }}" ./files
+            chmod -R +x files/etc/uci-defaults files/usr/bin 2>/dev/null || true
+          fi
+
+          # 配置 512MB 大分区大小
+          if [ -n "${{ inputs.rootfs_size }}" ]; then
+            sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=${{ inputs.rootfs_size }}/g" .config 2>/dev/null || true
+            echo "CONFIG_TARGET_ROOTFS_PARTSIZE=${{ inputs.rootfs_size }}" >> .config
+          fi
+
+      - name: 构建定制固件 (make image)
+        run: |
+          cd ${{ env.IB_DIR }}
+
+          # 核心插件定义：纯净 LuCI + Argon 主题 + 512MB zram + eMMC大分区管理 + 透明代理必备kmod
+          PACKAGES="luci \
+            luci-base \
+            luci-compat \
+            luci-mod-admin-full \
+            luci-i18n-base-zh-cn \
+            luci-theme-argon \
+            luci-app-argon-config \
+            luci-i18n-argon-config-zh-cn \
+            zram-swap \
+            kmod-zram \
+            block-mount \
+            e2fsprogs \
+            f2fs-tools \
+            kmod-fs-ext4 \
+            kmod-fs-f2fs \
+            parted \
+            lsblk \
+            fdisk \
+            kmod-nft-socket \
+            kmod-nft-tproxy \
+            kmod-tun \
+            kmod-dummy \
+            kmod-inet-diag \
+            ca-bundle \
+            curl \
+            htop \
+            nano \
+            -docker \
+            -dockerd \
+            -luci-app-dockerman \
+            -luci-app-samba4 \
+            -samba4-server \
+            -luci-app-aria2 \
+            -luci-app-openclash \
+            -luci-app-passwall"
+
+          echo "开始打包生成固件..."
+          make image PROFILE="${{ inputs.profile }}" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="${{ inputs.rootfs_size }}"
+
+      - name: 整理打包固件文件
+        id: organize
+        run: |
+          cd ${{ env.IB_DIR }}/bin/targets/*/*
+          FIRMWARE_DIR="$GITHUB_WORKSPACE/firmware_output"
+          mkdir -p "$FIRMWARE_DIR"
+
+          # 提取刷机固件镜像
+          find . -maxdepth 1 -type f \( -name "*sysupgrade.bin" -o -name "*factory.bin" -o -name "*initramfs*.itb" -o -name "*initramfs*.bin" -o -name "*.manifest" \) -exec cp {} "$FIRMWARE_DIR/" \;
+
+          cd "$FIRMWARE_DIR"
+          ls -lh
+          sha256sum * > sha256sums.txt
+          md5sum * > md5sums.txt
+          echo "FIRMWARE_PATH=$FIRMWARE_DIR" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: 上传构建产物 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Quick-OpenWrt-AX1800Pro-${{ env.BUILD_DATE }}
+          path: ${{ env.FIRMWARE_PATH }}
+          retention-days: 14
+
+      - name: 发布至 GitHub Releases
+        if: inputs.upload_release == true && steps.organize.outputs.status == 'success'
+        uses: softprops/action-gh-release@v2
+        continue-on-error: true
+        with:
+          tag_name: Quick-AX1800Pro-${{ env.BUILD_DATE }}
+          name: 京东云亚瑟 AX1800 Pro 极速打包固件 (${{ env.BUILD_DATE }})
+          token: ${{ secrets.GITHUB_TOKEN }}
+          body: |
+            ## ⚡ 京东云亚瑟 AX1800 Pro (RE-SS-01) 3分钟极速打包固件
+
+            - **构建方式**: ImageBuilder 极速流水线 (构建仅耗时约 3 分钟)
+            - **底层底包**: ${{ inputs.ib_url }}
+            - **设备型号**: ${{ inputs.profile }} (JDCloud AX1800 Pro)
+            - **默认后台**: `192.168.1.1`
+            - **默认账号**: `root` (默认无密码，直接回车)
+            - **核心优化保留**:
+              - 🎨 **原版 LuCI + Argon 现代主题** (无冗余第三方插件)
+              - 🚀 **512MB U-Boot 大分区适配** (`ROOTFS_PARTSIZE=${{ inputs.rootfs_size }}`)
+              - 🍃 **512MB RAM 内存极限优化** (开箱启用 256MB zram-swap，虚拟内存激进回收)
+              - 💾 **板载 eMMC 64G/128G 存储一键扩容支持** (`expand-emmc.sh`)
+              - 🛡️ **烘焙透明代理必备内核模块** (`kmod-nft-tproxy`, `kmod-tun` 等，后续安装无冲突)
+
+            ### 刷机方法：
+            1. **首次刷入 (U-Boot)**: 路由器断电长按 Reset 键插电，蓝灯亮后电脑访问 `192.168.1.1` 上传刷入。
+            2. **同系统升级**: 在 OpenWrt 网页后台“系统 -> 备份/升级”上传 sysupgrade 镜像刷入。
+          files: ${{ env.FIRMWARE_PATH }}/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
