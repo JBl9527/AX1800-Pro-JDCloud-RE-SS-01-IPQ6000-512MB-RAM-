@@ -27,6 +27,10 @@ on:
         default: true
         type: boolean
 
+# 赋予工作流写入权限，允许创建 Release 和 Git Tag
+permissions:
+  contents: write
+
 env:
   CONFIG_FILE: configs/jdc_ax1800pro.config
   DIY_P1_SH: scripts/diy-part1.sh
@@ -38,6 +42,8 @@ jobs:
   build:
     name: 编译 AX1800 Pro 固件
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
       - name: 检出当前工作流代码
         uses: actions/checkout@v4
@@ -102,6 +108,7 @@ jobs:
           if [ -d "${{ env.FILES_DIR }}" ]; then
             cp -r "${{ env.FILES_DIR }}" "${{ env.OPENWRT_ROOT }}/files"
             chmod -R +x "${{ env.OPENWRT_ROOT }}/files/etc/uci-defaults" 2>/dev/null || true
+            chmod -R +x "${{ env.OPENWRT_ROOT }}/files/usr/bin" 2>/dev/null || true
           fi
 
           # 拷贝基础 .config
@@ -174,9 +181,11 @@ jobs:
       - name: 发布至 GitHub Releases
         if: inputs.upload_release == true && steps.organize.outputs.status == 'success'
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           tag_name: AX1800Pro-${{ env.BUILD_DATE }}
           name: 京东云亚瑟 AX1800 Pro 纯净轻量固件 (${{ env.BUILD_DATE }})
+          token: ${{ secrets.GITHUB_TOKEN }}
           body: |
             ## 🌟 京东云亚瑟 AX1800 Pro (JDC AX1800-Pro) 纯净原版固件
 
