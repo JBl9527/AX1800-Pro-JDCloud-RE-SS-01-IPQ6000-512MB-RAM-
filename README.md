@@ -31,7 +31,7 @@
 - **系统空闲内存**：开机后物理内存占用仅约 **50MB - 70MB**，剩余可用内存高达 **440MB+**。
 
 ### 4. 📶 高通 NSS 硬件加速与 Wi-Fi 满血优化
-- **NSS 满血加速驱动**：搭载 `kmod-qca-nss-drv` 与 `kmod-qca-nss-ecm`，千兆 NAT 转发由专用网络协处理器卸载，CPU 占用率趋近于 0，温度大幅降低。
+- **NSS 满血加速驱动**：搭载 `kmod-qca-nss-drv` 与 `kmod-qca-nss-ecm`，千兆 NAT 转发由专用网络协处理器卸载，CPU 占用率趋近于 0，温度大幅降低。（仅全量构建且源码选 LiBwrt / breeze303 时提供；Quick 版基于 ImmortalWrt 官方源，无 NSS）
 - **Wi-Fi 射频调优**：预置高通原厂 `ath11k` 固件与 AX1800 Pro 硬件校准 BDF，5GHz 功率与信道合理分配，彻底解决驱动默认未指定发射功率导致的无线过热掉速。
 
 ---
@@ -58,8 +58,7 @@
 │           └── expand-emmc.sh     # 固件内内置的 eMMC 大分区一键挂载脚本
 ├── scripts/
 │   ├── diy-part1.sh               # feeds 更新前钩子 (注入 Argon 主题源)
-│   ├── diy-part2.sh               # 编译前钩子 (DTS 校验、大分区镜像大小、WiFi调优)
-│   └── expand-emmc.sh             # 独立 eMMC 大分区存储挂载脚本
+│   └── diy-part2.sh               # 编译前钩子 (DTS 兜底校验、大分区镜像大小)
 ├── LICENSE
 └── README.md
 ```
@@ -72,7 +71,7 @@
 ### 两种编译方式任选：
 
 #### ⚡ 方式一：Quick ImageBuilder (推荐！仅需 3 ~ 5 分钟)
-适合日常打包、快速出固件。基于官方预编译 ImageBuilder，完整保留全部优化配置：
+适合日常打包、快速出固件。基于官方预编译 ImageBuilder。注意它的两个硬限制：**只有 sysupgrade、没有 factory（不能用于 U-Boot 首刷）**，且 **无 NSS 加速**（ImmortalWrt 官方源不带 NSS 包）；files 覆盖层、内存调优与分区参数保留。需要 factory 或 NSS 请用方式二全量构建：
 1. 打开 Actions 页面，点击左侧的 **[Quick ImageBuilder (3分钟极速打包)](https://github.com/JBl9527/AX1800-Pro-JDCloud-RE-SS-01-IPQ6000-512MB-RAM-/actions/workflows/quick-imagebuilder.yml)**；
 2. 点击右侧 **Run workflow** 下拉按钮；
 3. 参数默认已最优（型号 `jdcloud_re-ss-01`，Rootfs `512MB`），直接点击绿色按钮 **Run workflow**；
@@ -106,7 +105,7 @@
    - 子网掩码：`255.255.255.0`
    - 网关：`192.168.1.1`
 6. 在浏览器无痕模式下访问 `http://192.168.1.1` 进入 U-Boot Web 恢复页面；
-7. 选择编译生成的以 **`-factory.bin`** 结尾的固件文件上传；
+7. 选择**全量构建**生成的以 **`-factory.bin`** 结尾的固件文件上传（Quick 极速打包只有 sysupgrade，不能用于此处）；
 8. 点击 Update / 刷入，耐心等待 3~5 分钟，指示灯变绿并自动重启；
 9. 将电脑 IP 改回“自动获取（DHCP）”，浏览器访问 `192.168.1.1` 即可进入全新的 Argon 主题 LuCI 管理界面！
 
