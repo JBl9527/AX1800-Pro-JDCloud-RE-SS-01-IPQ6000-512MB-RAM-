@@ -16,8 +16,25 @@ fi
 
 echo "[信息] 检测到板载 eMMC 设备: /dev/mmcblk0"
 
-# 查找可用数据大分区
-TARGET_PART=$(ls -1 /dev/mmcblk0p* 2>/dev/null | sort -V | tail -n 1)
+# 选择目标数据分区：优先 partlabel 为 rootfs_data 的分区；否则选容量最大的分区。
+# 不再取"编号最后一个"——原厂 GPT 里小分区很多，编号顺序与用途无关，容易误选。
+TARGET_PART=""
+if [ -b "/dev/disk/by-partlabel/rootfs_data" ]; then
+    TARGET_PART=$(readlink -f "/dev/disk/by-partlabel/rootfs_data")
+fi
+if [ -z "$TARGET_PART" ] || [ ! -b "$TARGET_PART" ]; then
+    TARGET_PART=""
+    _best=0
+    for _p in /dev/mmcblk0p*; do
+        [ -b "$_p" ] || continue
+        _sz=$(lsblk -b -n -o SIZE "$_p" 2>/dev/null | head -n1)
+        if [ -n "$_sz" ] && [ "$_sz" -gt "$_best" ]; then
+            _best=$_sz
+            TARGET_PART=$_p
+        fi
+    done
+    unset _best _p _sz
+fi
 
 if [ -z "$TARGET_PART" ]; then
     echo "[错误] 未找到可用分区！"
