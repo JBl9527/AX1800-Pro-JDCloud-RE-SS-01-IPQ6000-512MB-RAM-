@@ -82,6 +82,12 @@ jobs:
         run: |
           REPO_URL="${{ inputs.repo_url }}"
           REPO_BRANCH="${{ inputs.repo_branch }}"
+          # 先校验分支在所选仓库中真实存在：25.12-nss 仅 LiBwrt-op / breeze303 有，
+          # 官方 openwrt / immortalwrt 选它（或反之选错分支）必然克隆失败，先给明确报错
+          if ! git ls-remote --exit-code --heads "$REPO_URL" "refs/heads/$REPO_BRANCH" >/dev/null 2>&1; then
+            echo "::error::分支 '$REPO_BRANCH' 不存在于仓库 $REPO_URL —— 25.12-nss 仅 LiBwrt-op 与 breeze303 的 openwrt-6.x 有；openwrt/openwrt 请选 master，immortalwrt 请选其自有分支。"
+            exit 1
+          fi
           echo "Cloning $REPO_URL ($REPO_BRANCH)..."
           git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" openwrt
           cd openwrt
@@ -89,6 +95,14 @@ jobs:
           COMMIT_HASH=$(git rev-parse --short HEAD)
           echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
           echo "BUILD_DATE=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
+
+      - name: 缓存软件包下载目录 (dl)
+        uses: actions/cache@v4
+        with:
+          path: openwrt/dl
+          key: dl-${{ inputs.repo_branch }}-${{ hashFiles('configs/jdc_ax1800pro.config') }}
+          restore-keys: |
+            dl-${{ inputs.repo_branch }}-
 
       - name: 执行 DIY-Part1 自定义脚本 (添加源)
         run: |
@@ -163,6 +177,15 @@ jobs:
 
           cd "$FIRMWARE_DIR"
           ls -lh
+
+          # factory 产物断言：LiBwrt / breeze303 的设备定义含 factory 配方，
+          # 缺失说明构建不完整，直接失败，避免"没生成却以为成功"
+          case "${{ inputs.repo_url }}" in
+            *LiBwrt-op*|*breeze303*)
+              ls *factory.bin >/dev/null 2>&1 || { echo "::error::所选源码应生成 factory.bin 但产物中没有，构建不完整！"; exit 1; }
+              echo "factory.bin 已生成，可用于 U-Boot 首刷。"
+              ;;
+          esac
           
           # 生成哈希校验清单
           sha256sum * > sha256sums.txt
