@@ -27,11 +27,15 @@ echo ">>> 配置 U-Boot 大分区 Rootfs 镜像大小为: ${ROOTFS_SIZE}MB..."
 sed -i '/CONFIG_TARGET_ROOTFS_PARTSIZE/d' .config
 echo "CONFIG_TARGET_ROOTFS_PARTSIZE=${ROOTFS_SIZE}" >> .config
 
-# 5. 512MB 内存保护与 DTS 节点核查
-echo ">>> 执行 512MB RAM 节点保护检测..."
+# 5. 512MB 内存 DTS 节点兜底校验
+# 说明：仅当源码树内以 .dts 文件形式存在该设备 DTS 时本段才可能命中；
+# LiBwrt 等树的 DTS 随内核补丁下发、本脚本执行时文件尚不存在，会走下方
+# "未找到"提示分支，属预期。各目标树自带的 re-ss-01 定义本身即 512MB，
+# 本段只是防社区 DTS 误标 1GB 的兜底，不要当作已生效的适配。
+echo ">>> 执行 512MB RAM 节点兜底校验..."
 _dts_files=$(find target/linux/qualcommax \( -name "*jdcloud*.dts*" -o -name "*re-ss-01*.dts*" \) 2>/dev/null)
 if [ -z "$_dts_files" ]; then
-    echo "[警告] 未找到 jdcloud/re-ss-01 的 DTS 文件，512MB 内存节点保护未生效，请检查源码树！"
+    echo "[提示] 未找到 jdcloud/re-ss-01 的 DTS 文件（补丁下发型源码树属正常），跳过兜底校验。"
 else
     for dts_file in $_dts_files; do
         echo "检查 DTS 文件: $dts_file"
@@ -41,10 +45,12 @@ else
 fi
 unset _dts_files
 
-# 6. WiFi 默认配置优化 (AX1800 Pro 5G 功率与信道优化)
-# 修复部分源码中 5G 默认无功率设置或功率偏高导致的发热降速问题
-echo ">>> 预设 WiFi 优化参数 (5G 信道 149 / 功率 23dBm)..."
-sed -i 's/country=.*/country=CN/g' package/kernel/mac80211/files/lib/wifi/mac80211.sh 2>/dev/null || true
+# 6. WiFi 默认参数不在这里改源码：
+# 旧做法 sed mac80211.sh 的 country 行在新版源码中已无对应文本（空转），且其
+# 注释宣称的"5G 信道 149 / 功率 23dBm"从未真正设置过。无线国家码等默认值
+# 统一在 files/etc/uci-defaults/99-custom-init 中以 uci 方式设置（country_code=CN，
+# 信道/功率保持驱动默认，避免超规格发射）。
+echo ">>> WiFi 默认参数由 uci-defaults 设置，跳过源码 sed..."
 
 # 7. 移除顶层 Makefile 的 -Werror（LiBwrt-op NSS 树部分软件包有警告会导致编译中断；
 #    注意：这会同时掩盖真正的编译错误，定位疑难编译失败时可临时注释掉本行再编）
