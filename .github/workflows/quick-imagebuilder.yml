@@ -171,8 +171,7 @@ jobs:
               - 🛡️ **烘焙透明代理必备内核模块** (`kmod-nft-tproxy`, `kmod-tun` 等，后续安装无冲突)
 
             ### 刷机方法：
-            1. **首次刷入 (U-Boot)**: 路由器断电长按 Reset 键插电，蓝灯亮后电脑访问 `192.168.1.1` 上传刷入。
-            2. **同系统升级**: 在 OpenWrt 网页后台“系统 -> 备份/升级”上传 sysupgrade 镜像刷入。
+            > ⚠️ 本包只有 sysupgrade.bin：ImmortalWrt 官方设备定义无 factory 配方，本包也无 NSS 加速。仅适用于已在运行 OpenWrt 时在后台「系统 -> 备份/升级」升级，**不要**拿它去 U-Boot 网页首刷；首次刷入请使用全量构建（LiBwrt / breeze303 源）生成的含 factory.bin 的 Release。
           files: ${{ env.FIRMWARE_PATH }}/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
