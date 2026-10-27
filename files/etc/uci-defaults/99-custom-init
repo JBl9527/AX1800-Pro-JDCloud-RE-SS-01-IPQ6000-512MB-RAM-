@@ -13,25 +13,27 @@ uci set system.@system[0].hostname='OpenWrt-AX1800Pro'
 uci set system.@system[0].zonename='Asia/Shanghai'
 uci set system.@system[0].timezone='CST-8'
 uci set system.@system[0].log_size='64'
-uci set system.@system[0].log_buffer_size='64'
 uci commit system
 
 # 3. 内存优化：配置 zram-swap 压缩交换空间 (256MB，lz4 算法)
-if [ -f "/etc/config/zram" ]; then
-    uci set zram.@zram[0].enabled='1'
-    uci set zram.@zram[0].size='256'
-    uci set zram.@zram[0].comp_algorithm='lz4'
-    uci commit zram
-    /etc/init.d/zram restart 2>/dev/null || true
-fi
+# 注意：zram-swap 的启动脚本读的是 system.@system[0] 的 zram_size_mb 与
+# zram_comp_algo，不存在 /etc/config/zram 这个文件（旧写法整段不会生效，
+# 实际跑的是默认算法 lzo）。zram 在本脚本执行前已按默认值启动过一次，
+# 这里写入配置后重启服务使新参数生效。
+uci set system.@system[0].zram_size_mb='256'
+uci set system.@system[0].zram_comp_algo='lz4'
+uci commit system
+/etc/init.d/zram restart 2>/dev/null || true
 
 # 4. dnsmasq 缓存适度优化 (既保证快速解析，又杜绝大量域名缓存膨胀)
 uci set dhcp.@dnsmasq[0].cachesize='2000'
 uci commit dhcp
 
-# 5. WiFi 默认保持关闭（安全考虑：未设密码前不广播开放热点；
+# 5. WiFi 默认保持关闭并预置国家码 CN（安全考虑：未设密码前不广播开放热点；
 #    需要时在 LuCI「网络 -> 无线」里启用并设置 WPA2 密码）
 if [ -f "/etc/config/wireless" ]; then
+    uci set wireless.radio0.country_code='CN'
+    uci set wireless.radio1.country_code='CN'
     uci set wireless.radio0.disabled='1'
     uci set wireless.radio1.disabled='1'
     uci commit wireless
