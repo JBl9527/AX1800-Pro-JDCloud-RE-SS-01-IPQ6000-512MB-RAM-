@@ -57,9 +57,14 @@ jobs:
           cd ib
           echo "IB_DIR=$PWD" >> $GITHUB_ENV
 
-          # 确保 Argon 主题源在 repositories.conf 中可用
-          if ! grep -q "luci" repositories.conf 2>/dev/null; then
-            echo "src/gz custom_luci https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/luci" >> repositories.conf
+          # 防呆：Argon 主题三件套（luci-theme-argon 等）只存在于 ImmortalWrt 的 luci 源，
+          # 官方 OpenWrt 底包的源里没有。选了官方底包时先打标记 OFFICIAL_IB，
+          # 后面的打包步骤会据此自动剔除 Argon 并醒目提醒，避免 make image 在装包阶段
+          # 以 "no such package" 失败（2026-10-28 Quick run #2 实测教训）。
+          # 注：旧版往 repositories.conf 追加 ImmortalWrt 源行的做法在 apk 模式下根本不生效，已删除。
+          if echo "${{ inputs.ib_url }}" | grep -q "downloads.openwrt.org"; then
+            echo "OFFICIAL_IB=true" >> $GITHUB_ENV
+            echo "::warning::已选择官方 OpenWrt 底包：其软件源不含 Argon 主题，构建时将自动剔除 luci-theme-argon 等 3 个包，本次固件使用默认主题。如需 Argon，请改用默认的 ImmortalWrt 底包。"
           fi
 
           echo "=== 检查目标设备 Profile ==="
@@ -119,6 +124,19 @@ jobs:
             -luci-app-aria2 \
             -luci-app-openclash \
             -luci-app-passwall"
+
+          # 防呆：官方底包（OFFICIAL_IB=true）软件源无 Argon 三件套，逐词剔除以免装包失败
+          if [ "${OFFICIAL_IB}" = "true" ]; then
+            NEW_PACKAGES=""
+            for p in $PACKAGES; do
+              case " luci-theme-argon luci-app-argon-config luci-i18n-argon-config-zh-cn " in
+                *" $p "*) echo "已剔除（官方源不存在此包）: $p" ;;
+                *) NEW_PACKAGES="$NEW_PACKAGES $p" ;;
+              esac
+            done
+            PACKAGES="$NEW_PACKAGES"
+            echo "::warning::官方底包：已自动剔除 Argon 主题三件套，本次固件为默认主题（无 Argon）。"
+          fi
 
           echo "开始打包生成固件..."
           make image PROFILE="${{ inputs.profile }}" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="${{ inputs.rootfs_size }}"
